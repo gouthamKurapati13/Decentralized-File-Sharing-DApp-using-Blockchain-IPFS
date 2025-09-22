@@ -7,6 +7,7 @@ import './App.css';
 import { create } from 'ipfs-http-client';
 import { Buffer } from 'buffer';
 import NotificationToast from './NotificationToast';
+import { FileEncryption } from './encryption';
 
 // IPFS configuration
 // For development, you need to run a local IPFS node or use a service like Pinata
@@ -159,24 +160,12 @@ class App extends Component {
         const filesCount = await dstorage.methods.fileCount().call()
         this.setState({ filesCount })
         console.log('✅ Files count:', filesCount)
-        // Load files&sort by the newest
-        for (var i = filesCount; i >= 1; i--) {
-          const file = await dstorage.methods.files(i).call()
-          
-          // Convert BigInt values to regular numbers for compatibility
-          const processedFile = {
-            ...file,
-            fileSize: typeof file.fileSize === 'bigint' ? Number(file.fileSize) : file.fileSize,
-            uploadTime: typeof file.uploadTime === 'bigint' ? Number(file.uploadTime) : file.uploadTime,
-            fileId: typeof file.fileId === 'bigint' ? Number(file.fileId) : file.fileId
-          }
-          
-          this.setState({
-            files: [...this.state.files, processedFile]
-          })
-        }
+        
+        // Load accessible files for current user
+        await this.loadAccessibleFiles(dstorage, accounts[0])
+        
         console.log('✅ DStorage loaded successfully!')
-        this.showNotification('✅ Connected to blockchain successfully!', 'success')
+        this.showNotification('Connected to blockchain successfully!', 'success')
       } catch (contractError) {
         console.error('❌ Error calling contract methods:', contractError)
         window.alert('Contract found but unable to call methods. Check if you\'re connected to the right network and account has permissions.')
@@ -195,67 +184,331 @@ class App extends Component {
     }
   }
 
+  async loadAccessibleFiles(dstorage, account) {
+    try {
+      // Get user's owned and shared files
+      const ownedFileIds = await dstorage.methods.getUserFiles(account).call()
+      const sharedFileIds = await dstorage.methods.getSharedFiles(account).call()
+      const publicFileIds = await dstorage.methods.getPublicFiles().call()
+      
+      // Combine all file IDs, avoiding duplicates
+      const allFileIds = [...new Set([...ownedFileIds, ...sharedFileIds, ...publicFileIds])]
+      
+      const files = []
+      for (let fileId of allFileIds) {
+        if (fileId > 0) { // Skip empty entries
+          const file = await dstorage.methods.files(fileId).call()
+          const hasAccess = await dstorage.methods.hasAccess(fileId, account).call()
+          
+          // Convert BigInt values to regular numbers for compatibility
+          const processedFile = {
+            ...file,
+            fileSize: typeof file.fileSize === 'bigint' ? Number(file.fileSize) : file.fileSize,
+            uploadTime: typeof file.uploadTime === 'bigint' ? Number(file.uploadTime) : file.uploadTime,
+            fileId: typeof file.fileId === 'bigint' ? Number(file.fileId) : file.fileId,
+            hasAccess: hasAccess,
+            isOwner: file.uploader.toLowerCase() === account.toLowerCase()
+          }
+          
+          files.push(processedFile)
+        }
+      }
+      
+      // Sort by newest first
+      files.sort((a, b) => b.uploadTime - a.uploadTime)
+      
+      this.setState({ files })
+      console.log('Loaded accessible files:', files.length)
+    } catch (error) {
+      console.error('Error loading accessible files:', error)
+      // Fallback to loading all files (for backward compatibility)
+      await this.loadAllFiles(dstorage)
+    }
+  }
+
+  async loadAllFiles(dstorage) {
+    try {
+      const filesCount = await dstorage.methods.fileCount().call()
+      const files = []
+      
+      // Load files & sort by the newest
+      for (var i = filesCount; i >= 1; i--) {
+        const file = await dstorage.methods.files(i).call()
+        
+        // Convert BigInt values to regular numbers for compatibility
+        const processedFile = {
+          ...file,
+          fileSize: typeof file.fileSize === 'bigint' ? Number(file.fileSize) : file.fileSize,
+          uploadTime: typeof file.uploadTime === 'bigint' ? Number(file.uploadTime) : file.uploadTime,
+          fileId: typeof file.fileId === 'bigint' ? Number(file.fileId) : file.fileId,
+          hasAccess: true, // Assume access for backward compatibility
+          isOwner: file.uploader.toLowerCase() === this.state.account.toLowerCase()
+        }
+        
+        files.push(processedFile)
+      }
+      
+      this.setState({ files })
+    } catch (error) {
+      console.error('Error loading all files:', error)
+    }
+  }
+
   // Get file from user
   captureFile = event => {
     event.preventDefault()
 
     const file = event.target.files[0]
-    const reader = new window.FileReader()
+    if (!file) return
 
+    // Check file size (limit to 50MB for demo)
+    if (file.size > 50 * 1024 * 1024) {
+      alert('File too large. Maximum size is 50MB.')
+      return
+    }
+
+    const reader = new window.FileReader()
     reader.readAsArrayBuffer(file)
     reader.onloadend = () => {
       this.setState({
         buffer: Buffer.from(reader.result),
+        file: file,
         type: file.type,
         name: file.name
       })
-      console.log('buffer', this.state.buffer)
+      console.log('File captured:', file.name, 'Size:', file.size)
     }
   }
 
-  uploadFile = async description => {
-    console.log("Submitting file to IPFS...")
-
+  uploadFile = async (description, accessType, recipients, encryptFile) => {
+    const file = this.state.file;
+    
+    if (!file) {
+      alert('Please select a file first');
+      return;
+    }
+    
     try {
-      // Add file to the IPFS
-      const result = await ipfs.add(this.state.buffer)
-      console.log('IPFS result', result)
-      
-      this.setState({ loading: true })
-      // Assign value for the file without extension
-      if(this.state.type === ''){
-        this.setState({type: 'none'})
+      this.setState({ uploading: true });
+
+      let fileBuffer = this.state.buffer;
+      let encryptionKey = null;
+
+      // Encrypt file if requested
+      if (encryptFile) {
+        const encryptedData = await FileEncryption.encryptFile(fileBuffer);
+        fileBuffer = encryptedData.encryptedBuffer;
+        encryptionKey = encryptedData.keyBase64;
+        console.log('File encrypted successfully');
+      }
+
+      // Add file to IPFS
+      const result = await ipfs.add(fileBuffer);
+      const fileHash = result.path;
+      console.log('File added to IPFS:', fileHash);
+
+      // Validate and convert accessType
+      let accessTypeInt;
+      if (typeof accessType === 'string') {
+        switch(accessType.toUpperCase()) {
+          case 'PUBLIC':
+            accessTypeInt = 0;
+            break;
+          case 'PRIVATE':
+            accessTypeInt = 1;
+            break;
+          case 'RESTRICTED':
+            accessTypeInt = 2;
+            break;
+          default:
+            accessTypeInt = parseInt(accessType);
+        }
+      } else {
+        accessTypeInt = parseInt(accessType);
       }
       
-      // Use the path instead of cid.toString() for newer IPFS versions
-      const fileHash = result.path || result.cid.toString()
+      if (isNaN(accessTypeInt) || accessTypeInt < 0 || accessTypeInt > 2) {
+        throw new Error(`Invalid access type: ${accessType}. Must be PUBLIC, PRIVATE, RESTRICTED, or 0-2`);
+      }
+
+      console.log('Upload parameters:', {
+        fileHash,
+        fileSize: file.size,
+        fileName: file.name,
+        fileDescription: description,
+        accessType: accessTypeInt,
+        isEncrypted: encryptFile
+      });
+
+      // Upload to blockchain with description
+      const receipt = await this.state.dstorage.methods
+        .uploadFile(
+          fileHash,
+          file.size,
+          file.name,
+          description,
+          accessTypeInt,
+          encryptFile
+        )
+        .send({ from: this.state.account });
+
+      console.log('File uploaded to blockchain:', receipt);
+
+      const fileId = receipt.events.FileUploaded.returnValues.fileId;
+
+      // Add recipients if provided and not public
+      if (recipients && recipients.length > 0 && accessTypeInt !== 0) {
+        try {
+          await this.state.dstorage.methods
+            .addRecipients(fileId, recipients)
+            .send({ from: this.state.account });
+          console.log('Recipients added successfully');
+        } catch (error) {
+          console.warn('Error adding recipients:', error);
+        }
+      }
+
+      // Store encryption key locally if file was encrypted
+      if (encryptFile && encryptionKey) {
+        const encryptionKeys = JSON.parse(localStorage.getItem('encryptionKeys') || '{}');
+        encryptionKeys[fileId] = encryptionKey;
+        localStorage.setItem('encryptionKeys', JSON.stringify(encryptionKeys));
+      }
+
+      // Refresh files list
+      await this.loadBlockchainData();
       
-      this.state.dstorage.methods.uploadFile(fileHash, result.size, this.state.type, this.state.name, description).send({ from: this.state.account }).on('transactionHash', (hash) => {
-        this.setState({
-         loading: false,
-         type: null,
-         name: null
-       })
-       this.showNotification(`🎉 File "${this.state.name}" uploaded successfully!`, 'success')
-       window.location.reload()
-      }).on('error', (e) =>{
-        this.showNotification('Failed to save file to blockchain', 'error')
-        this.setState({loading: false})
+      this.setState({ 
+        uploading: false,
+        file: null,
+        buffer: null 
+      });
+
+      // Reset the form in Main component
+      if (this.mainComponent && this.mainComponent.resetForm) {
+        this.mainComponent.resetForm();
+      }
+
+      this.showNotification('File uploaded successfully!', 'success');
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      this.setState({ 
+        uploading: false,
+        file: null,
+        buffer: null 
+      });
+      this.showNotification('Error uploading file: ' + error.message, 'error');
+    }
+  };
+
+  // Download and decrypt file
+  downloadFile = async (file) => {
+    try {
+      console.log('Downloading file:', file.fileName)
+      this.showNotification('📥 Downloading file...', 'info')
+      
+      // Check access first
+      const hasAccess = await this.state.dstorage.methods.hasAccess(file.fileId, this.state.account).call()
+      if (!hasAccess) {
+        this.showNotification('❌ Access denied to this file', 'error')
+        return
+      }
+      
+      // Log access
+      await this.state.dstorage.methods.accessFile(file.fileId).send({ from: this.state.account })
+      
+      // Fetch file from IPFS
+      const chunks = []
+      for await (const chunk of ipfs.cat(file.fileHash)) {
+        chunks.push(chunk)
+      }
+      
+      let fileData = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0))
+      let offset = 0
+      for (const chunk of chunks) {
+        fileData.set(chunk, offset)
+        offset += chunk.length
+      }
+      
+      // Handle decryption if file is encrypted
+      if (file.isEncrypted) {
+        if (!FileEncryption.isSupported()) {
+          this.showNotification('❌ Cannot decrypt: Web Crypto API not supported', 'error')
+          return
+        }
+        
+        try {
+          this.showNotification('🔓 Decrypting file...', 'info')
+          
+          const [keyData, ivData] = file.encryptionKey.split(':')
+          fileData = new Uint8Array(await FileEncryption.decryptFileFromDownload(
+            fileData.buffer, 
+            keyData, 
+            ivData
+          ))
+        } catch (decryptError) {
+          console.error('Decryption failed:', decryptError)
+          this.showNotification('❌ Failed to decrypt file. You may not have access.', 'error')
+          return
+        }
+      }
+      
+      // Create download
+      const blob = new Blob([fileData], { type: file.fileType })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      this.showNotification(`✅ Downloaded "${file.fileName}"`, 'success')
+      
+    } catch (error) {
+      console.error('Download error:', error)
+      this.showNotification('❌ Failed to download file: ' + error.message, 'error')
+    }
+  }
+
+  // Share file with additional recipients
+  shareFile = async (fileId, recipientAddress) => {
+    try {
+      this.showNotification('🔗 Sharing file...', 'info')
+      
+      await this.state.dstorage.methods.shareFile(fileId, recipientAddress).send({ 
+        from: this.state.account 
       })
-    } catch(error) {
-      console.error('IPFS error:', error)
-      let errorMessage = 'Error uploading to IPFS'
       
-      if (error.message && error.message.includes('fetch')) {
-        errorMessage = 'Cannot connect to IPFS node. Please make sure IPFS is running locally on port 5001.'
-      } else if (error.message && error.message.includes('401')) {
-        errorMessage = 'IPFS authentication error. Please check your IPFS configuration.'
-      } else if (error.message && error.message.includes('project id required')) {
-        errorMessage = 'IPFS API requires authentication. Please set up a local IPFS node or configure API keys.'
-      }
+      this.showNotification(`✅ File shared with ${recipientAddress}`, 'success')
       
-      this.showNotification(errorMessage, 'error')
-      this.setState({loading: false})
+      // Reload files to update UI
+      await this.loadAccessibleFiles(this.state.dstorage, this.state.account)
+      
+    } catch (error) {
+      console.error('Share error:', error)
+      this.showNotification('❌ Failed to share file: ' + error.message, 'error')
+    }
+  }
+
+  // Revoke access from recipient
+  revokeAccess = async (fileId, recipientAddress) => {
+    try {
+      this.showNotification('🚫 Revoking access...', 'info')
+      
+      await this.state.dstorage.methods.revokeAccess(fileId, recipientAddress).send({ 
+        from: this.state.account 
+      })
+      
+      this.showNotification(`✅ Access revoked from ${recipientAddress}`, 'success')
+      
+      // Reload files to update UI
+      await this.loadAccessibleFiles(this.state.dstorage, this.state.account)
+      
+    } catch (error) {
+      console.error('Revoke error:', error)
+      this.showNotification('❌ Failed to revoke access: ' + error.message, 'error')
     }
   }
 
@@ -280,10 +533,15 @@ class App extends Component {
       loading: false,
       type: null,
       name: null,
+      file: null,
+      buffer: null,
       notification: null
     }
     this.uploadFile = this.uploadFile.bind(this)
     this.captureFile = this.captureFile.bind(this)
+    this.downloadFile = this.downloadFile.bind(this)
+    this.shareFile = this.shareFile.bind(this)
+    this.revokeAccess = this.revokeAccess.bind(this)
   }
 
   render() {
@@ -297,10 +555,15 @@ class App extends Component {
                 <p className="loading-text">Processing your request...</p>
               </div>
             : <Main
+                ref={(main) => { this.mainComponent = main }}
                 files={this.state.files}
                 captureFile={this.captureFile}
                 uploadFile={this.uploadFile}
+                downloadFile={this.downloadFile}
+                shareFile={this.shareFile}
+                revokeAccess={this.revokeAccess}
                 loading={this.state.loading}
+                currentAccount={this.state.account}
               />
           }
         </div>
