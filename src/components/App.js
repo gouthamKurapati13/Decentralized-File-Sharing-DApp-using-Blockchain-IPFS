@@ -195,6 +195,10 @@ class App extends Component {
       const allFileIds = [...new Set([...ownedFileIds, ...sharedFileIds, ...publicFileIds])]
       
       const files = []
+      
+      // Get stored encryption keys
+      const encryptionKeys = JSON.parse(localStorage.getItem('encryptionKeys') || '{}')
+      
       for (let fileId of allFileIds) {
         if (fileId > 0) { // Skip empty entries
           const file = await dstorage.methods.files(fileId).call()
@@ -207,7 +211,8 @@ class App extends Component {
             uploadTime: typeof file.uploadTime === 'bigint' ? Number(file.uploadTime) : file.uploadTime,
             fileId: typeof file.fileId === 'bigint' ? Number(file.fileId) : file.fileId,
             hasAccess: hasAccess,
-            isOwner: file.uploader.toLowerCase() === account.toLowerCase()
+            isOwner: file.uploader.toLowerCase() === account.toLowerCase(),
+            encryptionKey: encryptionKeys[fileId] || null // Add encryption key from localStorage
           }
           
           files.push(processedFile)
@@ -296,9 +301,16 @@ class App extends Component {
 
       // Encrypt file if requested
       if (encryptFile) {
-        const encryptedData = await FileEncryption.encryptFile(fileBuffer);
+        console.log('Starting file encryption...');
+        if (!FileEncryption.isSupported()) {
+          throw new Error('Web Crypto API is not supported in this browser');
+        }
+        if (!this.state.file) {
+          throw new Error('No file selected for encryption');
+        }
+        const encryptedData = await FileEncryption.encryptFileForUpload(this.state.file);
         fileBuffer = encryptedData.encryptedBuffer;
-        encryptionKey = encryptedData.keyBase64;
+        encryptionKey = `${encryptedData.keyData}:${encryptedData.iv}`;
         console.log('File encrypted successfully');
       }
 
@@ -437,10 +449,20 @@ class App extends Component {
           return
         }
         
+        if (!file.encryptionKey) {
+          this.showNotification('❌ Cannot decrypt: Encryption key not found. File may have been uploaded from a different browser.', 'error')
+          return
+        }
+        
         try {
           this.showNotification('🔓 Decrypting file...', 'info')
           
-          const [keyData, ivData] = file.encryptionKey.split(':')
+          const keyParts = file.encryptionKey.split(':')
+          if (keyParts.length !== 2) {
+            throw new Error('Invalid encryption key format')
+          }
+          
+          const [keyData, ivData] = keyParts
           fileData = new Uint8Array(await FileEncryption.decryptFileFromDownload(
             fileData.buffer, 
             keyData, 

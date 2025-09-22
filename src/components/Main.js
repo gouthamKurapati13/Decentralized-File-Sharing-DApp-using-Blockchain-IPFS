@@ -475,7 +475,6 @@ class Main extends Component {
                   )}
                   
                   <div className="modal-footer">
-                    <button type="button" onClick={this.closeUploadModal} className="btn-secondary">Cancel</button>
                     <button 
                       type="submit" 
                       className="btn-primary upload-btn"
