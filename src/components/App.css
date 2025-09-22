@@ -30,6 +30,79 @@
   box-sizing: border-box;
 }
 
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--card-bg);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary-color));
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--card-bg);
+}
+
+/* Firefox Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary-color) var(--card-bg);
+}
+
+/* Modal Specific Scrollbar */
+.upload-modal ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.upload-modal ::-webkit-scrollbar-track {
+  background: rgba(51, 65, 85, 0.3);
+  border-radius: 8px;
+}
+
+.upload-modal ::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+  border-radius: 8px;
+  border: none;
+}
+
+.upload-modal ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary-color));
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.4);
+}
+
+/* Table Scrollbar */
+.files-table-wrapper ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.files-table-wrapper ::-webkit-scrollbar-track {
+  background: rgba(51, 65, 85, 0.2);
+  border-radius: 6px;
+}
+
+.files-table-wrapper ::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.6);
+  border-radius: 6px;
+}
+
+.files-table-wrapper ::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.8);
+}
+
 body {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -390,6 +463,131 @@ body {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Upload Button Section */
+.upload-button-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.upload-new-file-btn {
+  background: var(--gradient-primary);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+.upload-new-file-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary-color));
+}
+
+.upload-new-file-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-md);
+}
+
+/* Upload Modal Styles */
+.upload-modal.modal-content {
+  max-width: 900px !important;
+  width: 90% !important;
+  max-height: 80vh;
+  overflow-y: auto;
+  margin: 2rem auto;
+}
+
+.upload-modal .modal-body {
+  padding: 1.5rem;
+  margin: 0;
+}
+
+.upload-modal .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.upload-modal .access-control-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.upload-modal .access-control-section h4 {
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+  font-size: 1.125rem;
+}
+
+/* Compact file input for upload modal */
+.upload-modal .file-input-wrapper {
+  padding: 1.5rem 1rem;
+  margin-bottom: 1rem;
+  min-height: auto;
+}
+
+.upload-modal .file-input-label {
+  padding: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.upload-modal .selected-file-info {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Additional Upload Modal Spacing */
+.upload-modal .modal-header {
+  padding: 1.5rem 1.5rem 0;
+}
+
+.upload-modal .modal-footer {
+  padding: 0 1.5rem 1.5rem;
+  margin-top: 1.5rem;
+}
+
+/* Responsive Upload Modal */
+@media (max-width: 768px) {
+  .upload-modal.modal-content {
+    max-width: 95% !important;
+    width: 95% !important;
+    margin: 1rem auto;
+    max-height: 85vh;
+  }
+  
+  .upload-modal .modal-body {
+    padding: 1rem;
+  }
+  
+  .upload-modal .modal-header {
+    padding: 1rem 1rem 0;
+  }
+  
+  .upload-modal .modal-footer {
+    padding: 0 1rem 1rem;
+  }
+  
+  .upload-modal .file-input-wrapper {
+    padding: 1rem 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .upload-modal.modal-content {
+    margin: 0.5rem auto;
+    max-width: 98% !important;
+    width: 98% !important;
+  }
 }
 
 /* Files Table */

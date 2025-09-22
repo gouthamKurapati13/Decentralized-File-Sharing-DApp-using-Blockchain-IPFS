@@ -2,7 +2,7 @@ import React, { Component } from 'react';
 import { convertBytes } from './helpers';
 import moment from 'moment'
 import { FileEncryption } from './encryption';
-import { Download, Share2 } from 'lucide-react';
+import { Download, Share2, Upload } from 'lucide-react';
 
 class Main extends Component {
   constructor(props) {
@@ -17,7 +17,8 @@ class Main extends Component {
       shareFileId: null,
       shareRecipient: '',
       showRecipientsModal: false,
-      selectedFileRecipients: []
+      selectedFileRecipients: [],
+      showUploadModal: false
     };
   }
 
@@ -129,6 +130,17 @@ class Main extends Component {
     }
   }
 
+  // Open upload modal
+  openUploadModal = () => {
+    this.setState({ showUploadModal: true });
+  }
+
+  // Close upload modal
+  closeUploadModal = () => {
+    this.setState({ showUploadModal: false });
+    this.resetForm(); // Reset form when closing modal
+  }
+
   // Validate Ethereum address
   isValidAddress = (address) => {
     return /^0x[a-fA-F0-9]{40}$/.test(address);
@@ -147,183 +159,15 @@ class Main extends Component {
 
     return (
       <div className="main-content">
-        {/* Upload Section */}
-        <div className="upload-card">
-          <h2>📁 Upload File to IPFS</h2>
-          <form onSubmit={(event) => {
-            event.preventDefault()
-            const description = this.fileDescription.value
-            
-            // Validate recipients for restricted access
-            if (accessType === 'RESTRICTED') {
-              const validRecipients = recipients.filter(addr => addr.trim() !== '')
-              if (validRecipients.length === 0) {
-                alert('Please add at least one recipient for restricted access')
-                return
-              }
-              
-              const invalidRecipients = validRecipients.filter(addr => !this.isValidAddress(addr))
-              if (invalidRecipients.length > 0) {
-                alert('Please enter valid Ethereum addresses for recipients')
-                return
-              }
-            }
-            
-            this.props.uploadFile(description, accessType, recipients, shouldEncrypt)
-          }}>
-            <div className="form-group">
-              <input
-                id="fileDescription"
-                type="text"
-                ref={(input) => { this.fileDescription = input }}
-                className="form-input"
-                placeholder="Enter file description..."
-                required 
-              />
-            </div>
-
-            {/* Access Control Section */}
-            <div className="access-control-section">
-              <h4>🔒 Access Control</h4>
-              
-              <div className="form-group">
-                <label htmlFor="accessType" className="form-label">Select Access Level:</label>
-                <select
-                  id="accessType"
-                  name="accessType"
-                  value={accessType}
-                  onChange={this.handleAccessTypeChange}
-                  className="form-select"
-                  required
-                >
-                  <option value="PUBLIC">🌍 Public - Anyone can view and download</option>
-                  <option value="PRIVATE">🔐 Private - Only you can access</option>
-                  <option value="RESTRICTED">👥 Restricted - Specific people only</option>
-                </select>
-              </div>
-
-              {/* Recipients Section */}
-              {accessType === 'RESTRICTED' && (
-                <div className="recipients-section">
-                  <h5>Recipients (Ethereum Addresses)</h5>
-                  {recipients.map((recipient, index) => (
-                    <div key={index} className="recipient-input-group">
-                      <input
-                        type="text"
-                        placeholder="0x..."
-                        value={recipient}
-                        onChange={(e) => this.handleRecipientChange(index, e.target.value)}
-                        className={`recipient-input ${recipient && !this.isValidAddress(recipient) ? 'invalid' : ''}`}
-                      />
-                      {recipients.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => this.removeRecipient(index)}
-                          className="remove-recipient-btn"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={this.addRecipient}
-                    className="add-recipient-btn"
-                  >
-                    + Add Recipient
-                  </button>
-                </div>
-              )}
-
-              {/* Encryption Option */}
-              <div className="encryption-section">
-                <label className="encryption-option">
-                  <input
-                    type="checkbox"
-                    checked={shouldEncrypt}
-                    onChange={(e) => this.setState({ shouldEncrypt: e.target.checked })}
-                    disabled={!FileEncryption.isSupported()}
-                  />
-                  <span className="checkbox-custom"></span>
-                  <div className="encryption-details">
-                    <strong>🔐 Encrypt File</strong>
-                    <small>
-                      {FileEncryption.isSupported() 
-                        ? 'File will be encrypted before uploading'
-                        : 'Encryption not supported in this browser'
-                      }
-                    </small>
-                  </div>
-                </label>
-              </div>
-            </div>
-            
-            {selectedFile ? (
-              <div className="selected-file-info">
-                <div className="file-info-details">
-                  <span className="file-info-icon">📄</span>
-                  <div>
-                    <div>{selectedFile.name}</div>
-                    <small style={{ opacity: 0.7 }}>
-                      {convertBytes(selectedFile.size)} • {selectedFile.type || 'Unknown type'}
-                    </small>
-                  </div>
-                </div>
-                <button 
-                  type="button" 
-                  className="clear-file-btn"
-                  onClick={this.clearSelectedFile}
-                  title="Remove file"
-                >
-                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              <div 
-                className={`file-input-wrapper ${dragActive ? 'drag-active' : ''}`}
-                onDragEnter={this.handleDrag}
-                onDragLeave={this.handleDrag}
-                onDragOver={this.handleDrag}
-                onDrop={this.handleDrop}
-              >
-                <input 
-                  type="file" 
-                  onChange={this.handleFileSelect} 
-                  className="file-input"
-                  id="fileInput"
-                />
-                <label htmlFor="fileInput" className="file-input-label">
-                  <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  {dragActive ? 'Drop file here' : 'Choose file or drag & drop'}
-                </label>
-              </div>
-            )}
-            
-            <button 
-              type="submit" 
-              className="upload-btn"
-              disabled={this.props.loading || !selectedFile}
-            >
-              {this.props.loading ? (
-                <>
-                  <span className="loading-spinner"></span>
-                  &nbsp; Uploading...
-                </>
-              ) : (
-                <>
-                  <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ marginRight: '0.5rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 12l2 2 4-4" />
-                  </svg>
-                  Upload to IPFS
-                </>
-              )}
-            </button>
-          </form>
+        {/* Upload Button Section */}
+        <div className="upload-button-section">
+          <button 
+            onClick={this.openUploadModal}
+            className="upload-new-file-btn"
+          >
+            <Upload size={20} style={{ marginRight: '0.5rem' }} />
+            Upload New File
+          </button>
         </div>
 
         {/* Files Section */}
@@ -393,7 +237,7 @@ class Main extends Component {
                           >
                             {file.uploader.substring(0,8)}...
                           </a>
-                          {file.isOwner && <span className="owner-badge">👤</span>}
+                          {file.isOwner}
                         </td>
                         <td className="actions-cell">
                           <button
@@ -460,6 +304,197 @@ class Main extends Component {
                 >
                   Share File
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Upload Modal */}
+        {this.state.showUploadModal && (
+          <div className="modal-overlay" onClick={this.closeUploadModal}>
+            <div className="modal-content upload-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3><Upload size={20} style={{display: 'inline', marginRight: '8px'}} />Upload File to IPFS</h3>
+                <button onClick={this.closeUploadModal} className="modal-close">✕</button>
+              </div>
+              <div className="modal-body">
+                <form onSubmit={(event) => {
+                  event.preventDefault()
+                  const description = this.fileDescription.value
+                  
+                  // Validate recipients for restricted access
+                  if (accessType === 'RESTRICTED') {
+                    const validRecipients = recipients.filter(addr => addr.trim() !== '')
+                    if (validRecipients.length === 0) {
+                      alert('Please add at least one recipient for restricted access')
+                      return
+                    }
+                    
+                    const invalidRecipients = validRecipients.filter(addr => !this.isValidAddress(addr))
+                    if (invalidRecipients.length > 0) {
+                      alert('Please enter valid Ethereum addresses for recipients')
+                      return
+                    }
+                  }
+                  
+                  this.props.uploadFile(description, accessType, recipients, shouldEncrypt)
+                  this.closeUploadModal()
+                }}>
+                  <div className="form-group">
+                    <label className="form-label">File Description</label>
+                    <input
+                      id="fileDescription"
+                      type="text"
+                      ref={(input) => { this.fileDescription = input }}
+                      className="form-input"
+                      placeholder="Enter file description..."
+                      required 
+                    />
+                  </div>
+
+                  {/* Access Control Section */}
+                  <div className="access-control-section">
+                    <h4>🔒 Access Control</h4>
+                    
+                    <div className="form-group">
+                      <label htmlFor="accessType" className="form-label">Select Access Level:</label>
+                      <select
+                        id="accessType"
+                        name="accessType"
+                        value={accessType}
+                        onChange={this.handleAccessTypeChange}
+                        className="form-select"
+                        required
+                      >
+                        <option value="PUBLIC">🌍 Public - Anyone can view and download</option>
+                        <option value="PRIVATE">🔐 Private - Only you can access</option>
+                        <option value="RESTRICTED">👥 Restricted - Specific people only</option>
+                      </select>
+                    </div>
+
+                    {/* Recipients Section */}
+                    {accessType === 'RESTRICTED' && (
+                      <div className="recipients-section">
+                        <h5>Recipients (Ethereum Addresses)</h5>
+                        {recipients.map((recipient, index) => (
+                          <div key={index} className="recipient-input-group">
+                            <input
+                              type="text"
+                              placeholder="0x..."
+                              value={recipient}
+                              onChange={(e) => this.handleRecipientChange(index, e.target.value)}
+                              className={`recipient-input ${recipient && !this.isValidAddress(recipient) ? 'invalid' : ''}`}
+                            />
+                            {recipients.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => this.removeRecipient(index)}
+                                className="remove-recipient-btn"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={this.addRecipient}
+                          className="add-recipient-btn"
+                        >
+                          + Add Recipient
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Encryption Option */}
+                    <div className="encryption-section">
+                      <label className="encryption-option">
+                        <input
+                          type="checkbox"
+                          checked={shouldEncrypt}
+                          onChange={(e) => this.setState({ shouldEncrypt: e.target.checked })}
+                          disabled={!FileEncryption.isSupported()}
+                        />
+                        <span className="checkbox-custom"></span>
+                        <div className="encryption-details">
+                          <strong>🔐 Encrypt File</strong>
+                          <small>
+                            {FileEncryption.isSupported() 
+                              ? 'File will be encrypted before uploading'
+                              : 'Encryption not supported in this browser'
+                            }
+                          </small>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                  
+                  {selectedFile ? (
+                    <div className="selected-file-info">
+                      <div className="file-info-details">
+                        <span className="file-info-icon">📄</span>
+                        <div>
+                          <div>{selectedFile.name}</div>
+                          <small style={{ opacity: 0.7 }}>
+                            {convertBytes(selectedFile.size)} • {selectedFile.type || 'Unknown type'}
+                          </small>
+                        </div>
+                      </div>
+                      <button 
+                        type="button" 
+                        className="clear-file-btn"
+                        onClick={this.clearSelectedFile}
+                        title="Remove file"
+                      >
+                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      className={`file-input-wrapper ${dragActive ? 'drag-active' : ''}`}
+                      onDragEnter={this.handleDrag}
+                      onDragLeave={this.handleDrag}
+                      onDragOver={this.handleDrag}
+                      onDrop={this.handleDrop}
+                    >
+                      <input 
+                        type="file" 
+                        onChange={this.handleFileSelect} 
+                        className="file-input"
+                        id="fileInput"
+                      />
+                      <label htmlFor="fileInput" className="file-input-label">
+                        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        {dragActive ? 'Drop file here' : 'Choose file or drag & drop'}
+                      </label>
+                    </div>
+                  )}
+                  
+                  <div className="modal-footer">
+                    <button type="button" onClick={this.closeUploadModal} className="btn-secondary">Cancel</button>
+                    <button 
+                      type="submit" 
+                      className="btn-primary upload-btn"
+                      disabled={this.props.loading || !selectedFile}
+                    >
+                      {this.props.loading ? (
+                        <>
+                          <span className="loading-spinner"></span>
+                          &nbsp; Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={16} style={{ marginRight: '0.5rem' }} />
+                          Upload to IPFS
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
